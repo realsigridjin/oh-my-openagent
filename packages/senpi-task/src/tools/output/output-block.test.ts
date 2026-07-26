@@ -17,6 +17,8 @@ type MutableOutputManager = Omit<OutputManager, "waitFor"> & {
 function managerFrom(input: {
   readonly records: readonly TaskRecord[]
   readonly waitFor?: (taskId: string) => Promise<TaskRecord>
+  readonly runStatsSnapshot?: (taskId: string) => import("../../state").TaskRunStats | undefined
+  readonly subscribeChild?: (taskId: string, listener: (event: never) => void) => () => void
 }): MutableOutputManager {
   let records = [...input.records]
   const waitForCalls: string[] = []
@@ -39,6 +41,8 @@ function managerFrom(input: {
       return current
     },
     waitForCalls: () => waitForCalls,
+    ...(input.runStatsSnapshot === undefined ? {} : { runStatsSnapshot: input.runStatsSnapshot }),
+    ...(input.subscribeChild === undefined ? {} : { subscribeChild: input.subscribeChild }),
   }
 }
 
@@ -57,8 +61,15 @@ function depsFrom(input: {
 }
 
 describe("runTaskOutput block", () => {
-  test("#given a blocking running child #when it starts waiting #then it emits progress before waitFor resolves", async () => {
-    const running = makeRecord({ task_id: "st_running", status: "running" })
+  test("#given a blocking running child #when it starts waiting #then the live line leads with what the task is", async () => {
+    const running = makeRecord({
+      task_id: "st_running",
+      status: "running",
+      name: "task-1",
+      description: "Audit the waiting line",
+      category: "quick",
+      resolved_model: { provider: "apitopia", model_id: "kimi-k3", display: "k", reasoning_effort: "max", source: "category" },
+    })
     let resolveWait: (record: TaskRecord) => void = () => {}
     const manager = managerFrom({
       records: [running],
@@ -73,15 +84,70 @@ describe("runTaskOutput block", () => {
       (update) => { updates.push(update) },
     )
 
+    // identity-first grammar; the partial content stays empty because senpi core paints the activity line
     expect(updates).toHaveLength(1)
-    expect(updates[0]?.content).toEqual([{ type: "text", text: "waiting for st_running (running)" }])
+    expect(updates[0]?.content).toEqual([{ type: "text", text: "" }])
     expect(updates[0]?.details).toEqual({
       kind: "waiting",
-      progress: { activity: "waiting for st_running (running)", startedAt: Date.parse("2024-12-03T15:00:00.000Z"), maxWaitMs: 100 },
+      progress: {
+        activity: "Audit the waiting line · quick (apitopia/kimi-k3:max) · running",
+        startedAt: Date.parse("2024-12-03T15:00:00.000Z"),
+        maxWaitMs: 100,
+      },
     })
 
     resolveWait(makeRecord({ task_id: "st_running", status: "completed", final_response: "done" }))
     expect((await pending).details.kind).toBe("status")
+  })
+
+  test("#given a blocking wait on a live child #when the child emits events #then the activity refreshes with tool turns and tps", async () => {
+    const running = makeRecord({
+      task_id: "st_live",
+      status: "running",
+      description: "Audit the waiting line",
+      category: "quick",
+    })
+    let resolveWait: (record: TaskRecord) => void = () => {}
+    let listener: ((event: never) => void) | undefined
+    let unsubscribed = false
+    const manager = managerFrom({
+      records: [running],
+      waitFor: () => new Promise<TaskRecord>((resolve) => { resolveWait = resolve }),
+      runStatsSnapshot: () => ({ runtime_ms: 1_000, turns: 2, tool_calls: 3, tokens_per_second: 42 }),
+      subscribeChild: (_taskId, next) => {
+        listener = next
+        return () => { unsubscribed = true }
+      },
+    })
+    const updates: Parameters<AgentToolUpdateCallback>[0][] = []
+    const pending = runTaskOutput(
+      depsFrom({ manager }),
+      { task_id: "st_live", timeout_ms: 999 },
+      "session-parent",
+      undefined,
+      (update) => { updates.push(update) },
+    )
+
+    expect(updates).toHaveLength(1)
+    listener?.({ type: "tool_execution_start", toolName: "read", args: { path: "src/foo.ts" } } as never)
+    expect(updates).toHaveLength(2)
+    const refreshed = updates.at(-1)?.details
+    if (refreshed?.kind !== "waiting") throw new Error("expected waiting details")
+    expect(refreshed.progress.activity).toBe("Audit the waiting line · quick · turn 2 (3 tools) · running read src/foo.ts · 42 tok/s")
+    expect(refreshed.currentTool).toBe("read src/foo.ts")
+
+    listener?.({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Found the renderer." }] },
+    } as never)
+    const withLine = updates.at(-1)
+    expect(withLine?.content).toEqual([{ type: "text", text: "↳ last: Found the renderer." }])
+    if (withLine?.details.kind !== "waiting") throw new Error("expected waiting details")
+    expect(withLine.details.lastAssistantLine).toBe("Found the renderer.")
+
+    resolveWait(makeRecord({ task_id: "st_live", status: "completed", final_response: "done" }))
+    await pending
+    expect(unsubscribed).toBe(true)
   })
 
   test("#given omitted block on a running child #when waitFor resolves #then the terminal transcript is returned", async () => {

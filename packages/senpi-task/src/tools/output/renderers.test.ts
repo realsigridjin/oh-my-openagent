@@ -4,12 +4,7 @@ import type { ThemeColor } from "@code-yeongyu/senpi"
 
 import { rendererVisibleWidth } from "../task/renderers"
 import { toolResult } from "../control"
-import {
-  renderTaskOutputCall,
-  renderTaskOutputResult,
-  taskOutputModelText,
-  type OutputRenderTheme,
-} from "./renderers"
+import { renderTaskOutputCall, renderTaskOutputResult, type OutputRenderTheme } from "./renderers"
 import type { TaskOutputDetails, TaskSnapshot } from "./types"
 
 const TEST_THEME: OutputRenderTheme = {
@@ -116,13 +111,22 @@ describe("task_output renderers", () => {
       { kind: "not_found", reason: "No task 'missing' in this session.", known_tasks: ["alpha"] },
       { kind: "invalid_arguments", reason: "Provide task_id or name." },
     ]
+    // Real waiting updates carry empty content; the activity lives only in details.progress.
+    const waitingLine = firstLine(
+      renderTaskOutputResult(
+        toolResult("", { kind: "waiting", progress: { activity: "secret-activity-marker", startedAt: 1, maxWaitMs: 2 } }),
+        RESULT_OPTIONS,
+        TEST_THEME,
+      ),
+      120,
+    )
 
     // when
     const lines = details.map((detail) => firstLine(renderTaskOutputResult(toolResult("ignored", detail), RESULT_OPTIONS, TEST_THEME), 120))
 
     // then
     expect(lines).toHaveLength(details.length)
-    expect(lines.join("\n")).toContain("task_output status")
+    expect(lines.join("\n")).toContain("task_output st_done running")
     expect(lines.join("\n")).toContain("task_output transcript st_done")
     expect(lines.join("\n")).toContain("source:event-log")
     expect(lines.join("\n")).toContain("truncated")
@@ -131,6 +135,47 @@ describe("task_output renderers", () => {
     expect(lines.join("\n")).toContain("known:alpha")
     expect(lines.join("\n")).toContain("task_output invalid")
     expect(lines.join("\n")).not.toContain("secret transcript body")
+    // The waiting partial never echoes the activity: senpi core's tool-progress line paints it.
+    expect(waitingLine).toBe("")
+    expect(lines.join("\n")).not.toContain("secret-activity-marker")
+  })
+
+  test("#given a waiting partial with an assistant line #when rendered #then only the last-line row shows", () => {
+    // given
+    const detail: TaskOutputDetails = {
+      kind: "waiting",
+      progress: { activity: "Audit renderers · quick · running", startedAt: 1, maxWaitMs: 2 },
+      lastAssistantLine: "Found the renderer.",
+    }
+
+    // when
+    const line = firstLine(
+      renderTaskOutputResult(
+        toolResult("↳ last: Found the renderer.", detail),
+        { expanded: false, isPartial: true },
+        TEST_THEME,
+      ),
+      120,
+    )
+
+    // then
+    expect(line).toContain("↳ last: Found the renderer.")
+    expect(line).not.toContain("Audit renderers")
+  })
+
+  test("#given a described task #when the status row renders #then the human label leads and the id trails", () => {
+    // given / when
+    const line = firstLine(
+      renderTaskOutputResult(
+        toolResult("ignored", { kind: "status", snapshot: snapshot({ name: "task-1", description: "Audit the waiting line" }) }),
+        RESULT_OPTIONS,
+        TEST_THEME,
+      ),
+      200,
+    )
+
+    // then
+    expect(line).toStartWith("[success]task_output Audit the waiting line (st_done) completed")
   })
 
   test("#given long multiline Korean and English known tasks #when rendering not_found at width 96 #then known list is normalized truncated and column-safe", () => {
@@ -153,49 +198,68 @@ describe("task_output renderers", () => {
     expect(rendererVisibleWidth(line)).toBeLessThanOrEqual(96)
   })
 
-  test("#given resolved model details #when formatting model text #then display is preferred and empty labels are omitted", () => {
+  test("#given resolved model details #when the status row renders #then the canonical target token is used", () => {
     // given / when
-    const withResolved = taskOutputModelText(
-      snapshot({
-        model: "openai/gpt-5.6-sol",
+    const withResolved = firstLine(
+      renderTaskOutputResult(
+        toolResult("ignored", {
+          kind: "status",
+          snapshot: snapshot({
+            category: "quick",
+            resolved_model: {
+              provider: "openai",
+              model_id: "gpt-5.6-sol",
+              display: "GPT-5.6 Sol",
+              reasoning_effort: " ",
+              variant: "xhigh",
+              source: "category",
+            },
+          }),
+        }),
+        RESULT_OPTIONS,
+        TEST_THEME,
+      ),
+      200,
+    )
+    const raw = firstLine(
+      renderTaskOutputResult(
+        toolResult("ignored", { kind: "status", snapshot: snapshot({ model: "anthropic/claude-sonnet-4-5" }) }),
+        RESULT_OPTIONS,
+        TEST_THEME,
+      ),
+      200,
+    )
+
+    // then blank effort falls back to the variant, and an unresolved model keeps a model token
+    expect(withResolved).toContain("quick (openai/gpt-5.6-sol:xhigh)")
+    expect(withResolved).not.toContain("reasoning")
+    expect(raw).toContain("model:anthropic/claude-sonnet-4-5")
+  })
+
+  test("#given injected controls in task_output model metadata #when the status row renders #then it is plain and sanitized", () => {
+    // given
+    const detail: TaskOutputDetails = {
+      kind: "status",
+      snapshot: snapshot({
+        category: "quick",
+        model: "raw\u001b[31m-model\u001b[0m",
         resolved_model: {
           provider: "openai",
           model_id: "gpt-5.6-sol",
-          display: "GPT-5.6 Sol",
-          reasoning_effort: " ",
-          variant: "xhigh",
+          display: "GPT\u001b]0;hidden\u0007-5.6 Sol",
+          reasoning_effort: "xhigh\u0007",
+          variant: "sol\u007f",
           source: "category",
         },
       }),
-    )
-    const raw = taskOutputModelText(snapshot({ model: "anthropic/claude-sonnet-4-5" }))
-
-    // then
-    expect(withResolved).toBe("model GPT-5.6 Sol (variant xhigh)")
-    expect(withResolved).not.toContain("reasoning ")
-    expect(raw).toBe("model anthropic/claude-sonnet-4-5")
-  })
-
-  test("#given injected controls in task_output model metadata #when formatted #then model text is plain and sanitized", () => {
-    // given
-    const task = snapshot({
-      model: "raw\u001b[31m-model\u001b[0m",
-      resolved_model: {
-        provider: "openai",
-        model_id: "gpt-5.6-sol",
-        display: "GPT\u001b]0;hidden\u0007-5.6 Sol",
-        reasoning_effort: "xhigh\u0007",
-        variant: "sol\u007f",
-        source: "category",
-      },
-    })
+    }
 
     // when
-    const text = taskOutputModelText(task)
+    const line = firstLine(renderTaskOutputResult(toolResult("ignored", detail), RESULT_OPTIONS, TEST_THEME), 200)
 
     // then
-    expect(text).toBe("model GPT-5.6 Sol (reasoning xhigh, variant sol)")
-    expectNoTerminalControls(text)
+    expect(line).toContain("quick (openai/gpt-5.6-sol:xhigh)")
+    expectNoTerminalControls(line)
   })
 
   test("#given injected controls in a task_output result #when rendered #then dynamic controls are removed before trusted theme styling", () => {
@@ -239,7 +303,7 @@ describe("task_output run stats rendering", () => {
     const line = firstLine(renderTaskOutputResult(toolResult("ignored", detail), RESULT_OPTIONS, TEST_THEME), 200)
 
     // then
-    expect(line).toContain("task_output status st_done (completed)")
+    expect(line).toContain("task_output st_done completed")
     expect(line).toContain("· ran 2m 14s")
     expect(line).toContain("· 118 tok/s")
   })

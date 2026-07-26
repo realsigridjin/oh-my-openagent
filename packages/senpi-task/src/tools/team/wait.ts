@@ -53,8 +53,10 @@ export async function runTeamWait(
 
   const timeoutMs = clampWaitTimeout(input.timeout_ms, deps.waitBounds)
   const from = normalizeWaitFrom(input.from)
+  // The activity lives ONLY in details.progress: senpi core's tool-progress line paints it, so
+  // echoing it as partial content renders the same wait twice.
   const activity = `waiting for team message${from === undefined ? "" : ` from ${from}`}`
-  onUpdate?.(toolResult(activity, { kind: "waiting", progress: { activity, startedAt: Date.now(), maxWaitMs: timeoutMs } }))
+  onUpdate?.(toolResult("", { kind: "waiting", progress: { activity, startedAt: Date.now(), maxWaitMs: timeoutMs } }))
   const filter = from === undefined ? {} : { from }
   const registration = deps.registry.register(resolved.teamRunId, filter)
   try {
@@ -121,9 +123,9 @@ function renderTeamWaitResult(
   theme: TeamWaitRenderTheme,
 ): WaitRenderComponent {
   const text = options.isPartial && isWaitingDetails(result.details)
-    ? result.details.progress.activity
+    ? result.content.find((part) => part.type === "text")?.text ?? ""
     : result.content[0]?.type === "text" ? result.content[0].text : "team_wait"
-  return linesComponent([theme.fg("toolTitle", text)])
+  return text.length === 0 ? linesComponent([]) : linesComponent([theme.fg("toolTitle", text)])
 }
 
 function isWaitingDetails(details: unknown): details is Extract<TeamWaitDetails, { readonly kind: "waiting" }> {

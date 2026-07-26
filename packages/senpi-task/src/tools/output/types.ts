@@ -1,11 +1,15 @@
 import type { AgentToolResult } from "@code-yeongyu/senpi"
 
 import type { ToolProgressDetails } from "../../progress"
-import type { TaskManager } from "../../manager"
+import type { ManagedChildListener, TaskManager } from "../../manager"
 import type { ResolvedModelRecord, TaskRunStats, TaskStatus } from "../../state"
 import type { CallerSessionResolver, WaitBounds } from "../control"
 
-export type OutputManager = Pick<TaskManager, "get" | "list" | "waitFor">
+export type OutputManager = Pick<TaskManager, "get" | "list" | "waitFor"> & {
+  // Optional live seams: absent means the blocking wait degrades to the record facts it already has.
+  readonly runStatsSnapshot?: (taskId: string) => TaskRunStats | undefined
+  readonly subscribeChild?: (taskId: string, listener: ManagedChildListener) => () => void
+}
 
 export type TranscriptEntry =
   | { readonly kind: "assistant"; readonly text: string }
@@ -30,6 +34,7 @@ export type LostBreadcrumbs = {
 export type TaskSnapshot = {
   readonly task_id: string
   readonly name?: string
+  readonly description?: string
   readonly status: TaskStatus
   readonly execution_mode: string
   readonly model: string
@@ -52,6 +57,8 @@ type WaitingProgress = ToolProgressDetails["progress"] & { readonly maxWaitMs: n
 export type TaskOutputWaitingDetails = {
   readonly kind: "waiting"
   readonly progress: WaitingProgress
+  readonly currentTool?: string
+  readonly lastAssistantLine?: string
 }
 
 export type TaskOutputDetails =

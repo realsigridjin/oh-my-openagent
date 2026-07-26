@@ -3,7 +3,9 @@ import { Type } from "typebox"
 import type { Static } from "typebox"
 
 import type { ListScope, ListedTask } from "../../manager"
+import { assistantLastLine, formatToolActivity } from "../../progress"
 import type { TaskRecord } from "../../state"
+import { composeStatusLine, formatStatusTarget, taskIdentityLabel } from "../../status-line"
 import { clampWaitTimeout, defaultResolveCallerSessionId, isTerminalStatus, toolResult } from "../control"
 import { renderTaskOutputCall, renderTaskOutputResult, taskOutputModelText } from "./renderers"
 import { renderTranscript } from "./render"
@@ -91,8 +93,40 @@ async function blockedResult(
 ): Promise<TaskOutputToolResult> {
   const startedAt = (deps.now ?? Date.now)()
   const timeoutMs = clampWaitTimeout(params.timeout_ms, deps.waitConfig)
-  const activity = `waiting for ${record.task_id} (${record.status})`
-  onUpdate?.(toolResult(activity, { kind: "waiting", progress: { activity, startedAt, maxWaitMs: timeoutMs } }))
+  let currentTool: string | undefined
+  let lastAssistant: string | undefined
+
+  // One live line, painted by senpi core's tool-progress renderer: WHAT the task is, where it runs,
+  // and its in-flight turns/tools/tok-s. The partial content carries only the last assistant row.
+  const emit = (): void => {
+    const activity = composeStatusLine({
+      identity: taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description }),
+      target: formatStatusTarget({ category: record.category, agentType: record.agent_type, resolvedModel: record.resolved_model }),
+      stats: deps.manager.runStatsSnapshot?.(record.task_id),
+      verb: record.status === "pending" ? "queued" : currentTool === undefined ? "running" : `running ${currentTool}`,
+    })
+    onUpdate?.(
+      toolResult(lastAssistant === undefined ? "" : `↳ last: ${lastAssistant}`, {
+        kind: "waiting",
+        progress: { activity, startedAt, maxWaitMs: timeoutMs },
+        ...(currentTool === undefined ? {} : { currentTool }),
+        ...(lastAssistant === undefined ? {} : { lastAssistantLine: lastAssistant }),
+      }),
+    )
+  }
+  emit()
+  const unsubscribe = deps.manager.subscribeChild?.(record.task_id, (event) => {
+    if (event.type === "tool_execution_start" && typeof event.toolName === "string") {
+      currentTool = formatToolActivity(event.toolName, event.args ?? event.input)
+    } else if (event.type === "tool_execution_end") {
+      currentTool = undefined
+    } else if (event.type === "message_end") {
+      const line = assistantLastLine(event.message)
+      if (line === undefined) return
+      lastAssistant = line
+    } else return
+    emit()
+  })
 
   const waitController = new AbortController()
   const removeParentAbort = forwardAbort(signal, waitController)
@@ -113,6 +147,7 @@ async function blockedResult(
     }
     return outputForRecord(deps, deps.manager.get(record.task_id) ?? winner.record, params)
   } finally {
+    unsubscribe?.()
     removeParentAbort()
   }
 }

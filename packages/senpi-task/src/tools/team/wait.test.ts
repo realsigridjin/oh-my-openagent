@@ -48,7 +48,7 @@ describe("lead team_wait", () => {
 
     await updated
     expect(updates).toHaveLength(1)
-    expect(updates[0]?.content).toEqual([{ type: "text", text: "waiting for team message from alpha" }])
+    expect(updates[0]?.content).toEqual([{ type: "text", text: "" }])
     expect(updates[0]?.details).toEqual({
       kind: "waiting",
       progress: { activity: "waiting for team message from alpha", startedAt: expect.any(Number), maxWaitMs: 10 },
