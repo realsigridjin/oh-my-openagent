@@ -40,6 +40,7 @@ function fakeManager(overrides: Partial<TaskManager>): TaskManager {
     subscribeChild: () => () => {},
     residentTaskIds: () => [],
     wasBackground: () => false,
+    runStatsSnapshot: () => undefined,
     ...overrides,
   }
 }

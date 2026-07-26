@@ -26,6 +26,7 @@ export function createFakeManager(overrides: Partial<TaskManager>): TaskManager 
     get: () => undefined,
     list: () => [],
     waitFor: () => notImplemented("waitFor"),
+    runStatsSnapshot: () => undefined,
     forget: () => {},
     getResidentHandle: () => undefined,
     subscribeChild: () => () => {},

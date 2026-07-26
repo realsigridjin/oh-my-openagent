@@ -7,7 +7,7 @@ import {
   joinRendererTokens,
   optionalRendererText,
   rendererVisibleWidth,
-} from "./renderer-text"
+} from "../../renderer-text"
 
 const TASK_PROMPT_EXCERPT_WIDTH = 80
 

@@ -7,7 +7,7 @@ import { RpcProcessRunner } from "../runners/rpc-process"
 import type { RpcChildHandle, RpcRunnerSpec } from "../runners/types"
 import { createTaskRecord, parseTaskId, syncTaskIdFloor } from "../state"
 import { TaskIdSpaceExhaustedError } from "../state/id"
-import type { TaskRecord } from "../state"
+import type { TaskRecord, TaskRunStats } from "../state"
 import { createSteeringEngine } from "../steering"
 import type { CancelOutcome, DestructionPort, InterruptOutcome, SendInput, SendOutcome, SteeringEngine, SteeringPort } from "../steering"
 import { adaptRpcHandle, discardManagedHandle, discardRpcHandle, type ManagedChildHandle, type ManagedChildListener } from "./child-handle"
@@ -383,6 +383,8 @@ class TaskManagerImpl implements TaskManager {
     })
     return () => subscribers.get(listener)?.()
   }
+
+  runStatsSnapshot(taskId: string): TaskRunStats | undefined { return this.#runStats.get(taskId)?.snapshot(this.#now()) }
 
   residentTaskIds(): readonly string[] { return [...this.#live.keys()] }
 

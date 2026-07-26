@@ -1,7 +1,7 @@
 import type { ToolDefinition } from "@code-yeongyu/senpi"
 import type { OmoTaskSettings } from "@oh-my-opencode/omo-config-core"
 
-import type { ResolvedModelRecord, TaskRecord, TaskStatus } from "../state"
+import type { ResolvedModelRecord, TaskRecord, TaskRunStats, TaskStatus } from "../state"
 import type {
   CancelOutcome,
   DestructionPort,
@@ -49,6 +49,7 @@ export type ManagerStartSpec = {
   readonly execution_mode?: ExecutionMode
   readonly model?: string
   readonly name?: string
+  readonly description?: string
   readonly cwd?: string
   readonly instructions?: string
   readonly allowed_subagents?: readonly string[]
@@ -183,6 +184,9 @@ export type TaskManager = {
   get(taskId: string): TaskRecord | undefined
   list(scope: ListScope): readonly ListedTask[]
   waitFor(taskId: string, options?: { readonly signal?: AbortSignal }): Promise<TaskRecord>
+  // Live read of the manager-owned run-stats accumulator. Status surfaces (task_output's blocking
+  // wait) need in-flight turns/tool-calls/tok-s; the record only carries run_stats once terminal.
+  runStatsSnapshot(taskId: string): TaskRunStats | undefined
   // W1-V F3: prune a live handle (and its per-epoch release/background bookkeeping) so the lifecycle
   // destruction port and eviction path never leave a stale handle behind or grow #live unbounded.
   forget(taskId: string): void

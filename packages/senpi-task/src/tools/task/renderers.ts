@@ -15,7 +15,7 @@ import {
   normalizeRendererText,
   optionalRendererText,
   rendererVisibleWidth,
-} from "./renderer-text"
+} from "../../renderer-text"
 import { runStatsResultTokens } from "../run-stats-format"
 import { qualifyResolvedModelDisplay } from "./resolved-model-display"
 
@@ -217,7 +217,7 @@ export {
   joinRendererTokens,
   normalizeRendererText,
   rendererVisibleWidth,
-} from "./renderer-text"
+} from "../../renderer-text"
 export {
   formatTaskMode,
   formatTaskTarget,
