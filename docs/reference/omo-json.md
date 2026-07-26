@@ -1,6 +1,6 @@
 # omo.json Configuration Reference
 
-`omo.json` (or `omo.jsonc`) is the harness-neutral configuration surface owned by [`@oh-my-opencode/omo-config-core`](../../packages/omo-config-core/AGENTS.md). Today it is read by the Senpi adapter's `task` component only; the schema, loader, and writer are shared code so other harnesses can adopt it later (see [Coexistence](#coexistence-omojson-vs-oh-my-openagentjson) and [`ROADMAP.md`](../../ROADMAP.md)).
+`omo.json` (or `omo.jsonc`) is the harness-neutral configuration surface owned by [`@oh-my-opencode/omo-config-core`](../../packages/omo-config-core/AGENTS.md). Today it is read by the Senpi adapter's `task` and `codegraph` components; the schema, loader, and writer are shared code so other harnesses can adopt it later (see [Coexistence](#coexistence-omojson-vs-oh-my-openagentjson) and [`ROADMAP.md`](../../ROADMAP.md)).
 
 Files may be JSONC: `//` comments and trailing commas are allowed. Every schema object is `.strict()`, so unknown keys are rejected and reported as a diagnostic rather than silently ignored.
 
@@ -77,6 +77,7 @@ https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.sc
   "$schema": "…",        // optional editor pointer
   "categories": { … },   // record<string, CategoryConfig>
   "agents": { … },       // record<string, AgentDef>
+  "codegraph": { … },    // CodeGraph MCP settings
   "task": { … },         // task engine settings
   "teams": { … }         // record<string, TeamSpec>
 }
@@ -168,6 +169,24 @@ curated read-only agent "oracle" cannot be a team member; delegate via the task 
 
 Team members always spawn in `process` mode, which cannot carry the curated persona or tool policy, so delegate to these agents through the task tool instead of naming them as team members.
 
+### `codegraph`
+
+CodeGraph MCP settings consumed by the Senpi `codegraph` component when the extension registers (`schema/codegraph.ts`).
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `daemon` | boolean | `false` | When `false`, the managed MCP environment pins `CODEGRAPH_NO_DAEMON=1`, so each Senpi session uses its own in-process CodeGraph server. When `true`, the pin is omitted so upstream CodeGraph may use its shared daemon. |
+
+`OMO_CODEGRAPH_DAEMON` overrides `codegraph.daemon`, which overrides the default: **environment > config > default (`false`)**. The environment values `1`, `true`, and `yes` select daemon mode; `0`, `false`, and `no` select no-daemon mode. An unset, empty, or unrecognized value defers to `codegraph.daemon`.
+
+```jsonc
+{
+  "codegraph": {
+    "daemon": true
+  }
+}
+```
+
 ### `task`
 
 Task engine settings; every field has a default, so the whole object is optional (`schema/task.ts`).
@@ -255,7 +274,7 @@ Each member shares a base (`name` matching `^[a-z0-9-]+$`, optional `cwd`, `work
 `omo.json` and the OpenCode-family config (`oh-my-openagent.json` / `oh-my-opencode.json`) have **zero interaction today**. They are separate files read by separate loaders:
 
 - The OpenCode plugin reads the walked `oh-my-openagent.json[c]` chain (see [`docs/reference/configuration.md`](./configuration.md)).
-- The Senpi `task` component reads `omo.json` only, through `@oh-my-opencode/omo-config-core`.
+- The Senpi `task` and `codegraph` components read `omo.json` through `@oh-my-opencode/omo-config-core`.
 
 There is no automatic migration or field bridging between the two. When a project contains BOTH an OpenCode-family config and an `omo.json` that contributed `categories`/`agents`, the Senpi task component emits a one-time warning on first session start noting that senpi reads `omo.json` only and ignores the OpenCode config for tasks (`packages/omo-senpi/src/components/task/coexistence.ts`).
 
