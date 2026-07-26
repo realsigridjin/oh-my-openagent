@@ -128,7 +128,7 @@ describe("formatFooterStatus", () => {
     // then
     expect(footer).not.toContain("\n")
     for (const columns of [72, 120]) expect(rendererVisibleWidth(footer)).toBeLessThanOrEqual(columns)
-    expect(footer).toBe("t1/r1 st_01acti...|c:ultrabrain omo-mock/mock-1 xhigh in-process running")
+    expect(footer).toBe("t1/r1 st...|category:ultrabrain omo-mock/mock-1 xhigh in-process running")
   })
 })
 
@@ -163,8 +163,8 @@ describe("buildWidgetRows", () => {
     const row = buildWidgetRows(records)[0] ?? ""
 
     // then
-    expect(row).toContain("st_row")
-    expect(row).toContain("a:explore")
+    expect(row).toContain("finder")
+    expect(row).toContain("agent:explore")
     expect(row).toContain("anthropic/")
     expect(row).toContain("in-process")
     expect(row).toContain("running")
@@ -178,7 +178,7 @@ describe("buildWidgetRows", () => {
     // then
     expect(row).not.toContain("\n")
     for (const columns of [70, 72, 120]) expect(rendererVisibleWidth(row)).toBeLessThanOrEqual(columns)
-    expect(row).toContain("c:ultrabrain")
+    expect(row).toContain("category:ultrabrain")
     expect(row).toContain("omo-mock/mock-1")
     expect(row).toContain("xhigh")
     expect(row).toContain("in-process")
@@ -211,8 +211,25 @@ describe("formatTaskRow", () => {
 
     // then
     expect(row).toBe(
-      "st_resolved planner category:ultrabrain model:openai/gpt-5.6-sol reasoning:xhigh variant:sol mode:rpc status:running",
+      "planner (st_resolved) category:ultrabrain model:openai/gpt-5.6-sol reasoning:xhigh variant:sol mode:rpc status:running",
     )
+  })
+
+  it("#given a task with a description #when formatting #then the human label leads and name and id trail", () => {
+    // given
+    const task = record({
+      task_id: "st_described",
+      name: "task-2",
+      description: "Audit the waiting line",
+      status: "running",
+      category: "quick",
+    })
+
+    // when
+    const row = formatTaskRow(task)
+
+    // then
+    expect(row).toStartWith("Audit the waiting line (st_described) category:quick")
   })
 
   it("#given a legacy task without resolved model metadata #when formatting #then raw model is preserved as the model label", () => {
@@ -326,7 +343,7 @@ describe("createTaskStatusUi.syncNow", () => {
     expect(rendererVisibleWidth(widgetRow)).toBeLessThanOrEqual(70)
     expect(rendererVisibleWidth(footer)).toBeLessThanOrEqual(72)
     expect(widgetRow).toContain("한")
-    expect(widgetRow).toContain("c:ultrabrain")
+    expect(widgetRow).toContain("category:ultrabrain")
     expect(widgetRow).toContain("GPT-5.6 Sol")
     expect(widgetRow).toContain("xhigh")
     expect(widgetRow).toContain("in-process")
@@ -420,8 +437,8 @@ describe("createTaskStatusUi.background progress", () => {
     // then each active background child has a compact, single-line live row in the widget and active footer
     const rows = ui.widgetCalls.at(-1)?.content ?? []
     expect(rows).toEqual([
-      "⠋ st_first Investigate the... · read src/foo.ts · 1m 5s",
-      "⠋ st_second Review tests · bash bun test · 1m 5s",
+      "⠋ Investigate the... · read src/foo.ts · 1m 5s",
+      "⠋ Review tests · bash bun test · 1m 5s",
     ])
     expect(ui.statusCalls.at(-1)).toContain("Investigate the...")
     expect(ui.statusCalls.at(-1)).toContain("read src/foo.ts")

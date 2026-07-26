@@ -1,3 +1,4 @@
+import { taskIdentityLabel } from "@oh-my-opencode/senpi-task"
 import type { CancelOutcome, ListScope, ListedTask, TaskRecord, TaskStatus } from "@oh-my-opencode/senpi-task"
 
 import type { SenpiExtensionAPI } from "../../extension/types"
@@ -78,8 +79,7 @@ async function runTaskKillCommand(manager: CommandManager, ctx: CommandContext):
 }
 
 function killOption(record: TaskRecord): string {
-  const parts = [record.task_id]
-  if (record.name !== undefined) parts.push(record.name)
-  parts.push(record.status)
-  return parts.join(" ")
+  const identity = taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description })
+  const idSuffix = identity === record.task_id ? "" : ` (${record.task_id})`
+  return `${identity}${idSuffix} ${record.status}`
 }

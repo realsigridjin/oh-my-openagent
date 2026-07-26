@@ -1,7 +1,10 @@
 import {
+  assistantLastLine,
   excerptRendererText,
+  formatToolActivity,
   normalizeRendererText,
   rendererVisibleWidth,
+  taskIdentityLabel,
   type ListScope,
   type ListedTask,
   type ManagedChildEvent,
@@ -91,9 +94,9 @@ function progressHead(record: TaskRecord): string | undefined {
 }
 
 export function formatTaskRow(record: TaskRecord): string {
-  const parts = [normalizeRendererText(record.task_id)]
-  const name = optionalRendererText(record.name)
-  if (name !== undefined) parts.push(name)
+  const identity = taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description })
+  const parts = [identity]
+  if (identity !== normalizeRendererText(record.task_id)) parts.push(`(${normalizeRendererText(record.task_id)})`)
   parts.push(targetLabel(record), `model:${modelDisplay(record)}`)
   const reasoning = optionalRendererText(record.resolved_model?.reasoning_effort)
   if (reasoning !== undefined) parts.push(`reasoning:${reasoning}`)
@@ -145,10 +148,13 @@ function formatWidgetRow(record: TaskRecord): string {
 }
 
 function formatLiveBackgroundRow(record: TaskRecord, activity: string, now: number, maxWidth = WIDGET_LINE_MAX): string {
-  const description = excerptRendererText(optionalRendererText(record.name) ?? targetLabel(record), LIVE_DESCRIPTION_MAX)
+  const identity = excerptRendererText(
+    taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description }),
+    LIVE_DESCRIPTION_MAX,
+  )
   const elapsed = formatElapsed(record.created_at, now)
   const frame = SPINNER_FRAMES[Math.floor(now / DEFAULT_DEBOUNCE_MS) % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0]
-  return excerptRendererText(`${frame} ${record.task_id} ${description} · ${activity} · ${elapsed}`, maxWidth)
+  return excerptRendererText(`${frame} ${identity} · ${activity} · ${elapsed}`, maxWidth)
 }
 
 function formatElapsed(createdAt: string, now: number): string {
@@ -183,22 +189,19 @@ function formatCompactTaskRow(record: TaskRecord, maxWidth: number, includeName:
 }
 
 function compactTaskIdentity(record: TaskRecord, maxWidth: number, includeName: boolean): string {
-  const name = optionalRendererText(record.name)
-  if (!includeName || name === undefined || maxWidth <= 5) return excerptRendererText(record.task_id, maxWidth)
-  const nameWidth = Math.min(9, maxWidth - 5)
-  const idWidth = maxWidth - nameWidth - 1
-  return compactTokens([
-    excerptRendererText(record.task_id, idWidth),
-    excerptRendererText(name, nameWidth),
-  ])
+  if (!includeName) return excerptRendererText(record.task_id, maxWidth)
+  return excerptRendererText(
+    taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description }),
+    maxWidth,
+  )
 }
 
 function compactTaskContext(record: TaskRecord): string {
   const category = optionalRendererText(record.category)
-  const target = category === undefined ? `a:${optionalRendererText(record.agent_type) ?? "?"}` : `c:${category}`
+  const target = category === undefined ? `agent:${optionalRendererText(record.agent_type) ?? "?"}` : `category:${category}`
   const reasoning = optionalRendererText(record.resolved_model?.reasoning_effort)
   return compactTokens([
-    excerptRendererText(target, 12),
+    excerptRendererText(target, 20),
     excerptRendererText(modelDisplay(record), 15),
     reasoning === undefined ? undefined : excerptRendererText(reasoning, 5),
     excerptRendererText(record.execution_mode, 10),
@@ -302,37 +305,14 @@ export function createTaskStatusUi(deps: TaskStatusUiDeps): TaskStatusUi {
 
 function activityFromEvent(event: ManagedChildEvent): string | undefined {
   if (event.type === "tool_execution_start" && typeof event.toolName === "string") {
-    const argument = firstStringArgument(event.args ?? event.input)
-    return excerptRendererText(`${event.toolName}${argument.length === 0 ? "" : ` ${argument}`}`, 32)
+    return excerptRendererText(formatToolActivity(event.toolName, event.args ?? event.input), 32)
   }
   if (event.type === "tool_execution_end") return "running"
   if (event.type === "message_end") {
-    const text = assistantMessageText(event.message)
-    return text === undefined ? undefined : excerptRendererText(text, 32)
+    const line = assistantLastLine(event.message)
+    return line === undefined ? undefined : excerptRendererText(line, 32)
   }
   return undefined
-}
-
-function assistantMessageText(message: unknown): string | undefined {
-  if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined
-  const content = (message as { readonly content?: unknown }).content
-  if (!Array.isArray(content)) return undefined
-  const text = content
-    .filter((part): part is { readonly type: "text"; readonly text: string } =>
-      typeof part === "object" && part !== null && !Array.isArray(part) &&
-      (part as { readonly type?: unknown }).type === "text" && typeof (part as { readonly text?: unknown }).text === "string",
-    )
-    .map((part) => part.text)
-    .join("")
-  const normalized = normalizeRendererText(text)
-  return normalized.length === 0 ? undefined : normalized
-}
-
-function firstStringArgument(value: unknown): string {
-  if (typeof value === "string") return excerptRendererText(normalizeRendererText(value), 22)
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return ""
-  const item = Object.values(value).find((candidate) => typeof candidate === "string")
-  return typeof item === "string" ? excerptRendererText(normalizeRendererText(item), 22) : ""
 }
 
 function scopedRecords(manager: StatusUiManager, sessionId: string | undefined): readonly TaskRecord[] {
