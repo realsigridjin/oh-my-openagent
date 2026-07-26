@@ -70,8 +70,9 @@ async function runTaskKillCommand(manager: CommandManager, ctx: CommandContext):
   const options = cancellable.map(killOption)
   const choice = await ui.select("Cancel which task?", options)
   if (choice === undefined) return
-  const taskId = choice.split(" ")[0]
-  if (taskId === undefined || taskId.length === 0) return
+  const selected = cancellable[options.indexOf(choice)]
+  if (selected === undefined) return
+  const taskId = selected.task_id
   const confirmed = await ui.confirm("Cancel task", `Cancel ${taskId}?`)
   if (!confirmed) return
   await manager.cancelTask(taskId, KILL_REASON)

@@ -131,7 +131,7 @@ export function formatFooterStatus(
     return excerptRendererText(`${prefix} ${formatLiveBackgroundRow(active, activity, now, rowWidth)}`, STATUS_LINE_MAX)
   }
   const rowWidth = STATUS_LINE_MAX - rendererVisibleWidth(prefix) - 1
-  return excerptRendererText(`${prefix} ${formatCompactTaskRow(active, rowWidth, false)}`, STATUS_LINE_MAX)
+  return excerptRendererText(`${prefix} ${formatCompactTaskRow(active, rowWidth, true)}`, STATUS_LINE_MAX)
 }
 
 export function buildWidgetRows(records: readonly TaskRecord[]): string[] {

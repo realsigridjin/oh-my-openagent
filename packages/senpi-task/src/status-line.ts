@@ -15,6 +15,8 @@ export type StatusTargetInput = {
   readonly category?: string
   readonly agentType?: string
   readonly resolvedModel?: ResolvedModelRecord
+  // Raw model string used when no resolved model metadata exists (live/legacy tasks).
+  readonly model?: string
 }
 
 export type StatusLineStats = Pick<TaskRunStats, "turns" | "tool_calls"> & {
@@ -39,7 +41,7 @@ export function taskIdentityLabel(input: TaskIdentityInput): string {
 // WHERE it runs: the routing target plus the model actually resolved for it.
 export function formatStatusTarget(input: StatusTargetInput): string | undefined {
   const label = optionalRendererText(input.category) ?? optionalRendererText(input.agentType)
-  const model = formatStatusModel(input.resolvedModel)
+  const model = formatStatusModel(input.resolvedModel) ?? optionalRendererText(input.model)
   if (label === undefined) return model
   return model === undefined ? label : `${label} (${model})`
 }

@@ -22,6 +22,7 @@ export type ChildProgressTarget = {
   readonly category?: string
   readonly agentType?: string
   readonly resolvedModel?: ResolvedModelRecord
+  readonly model?: string
   readonly name?: string
   readonly description?: string
 }

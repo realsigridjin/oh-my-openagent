@@ -128,7 +128,7 @@ describe("formatFooterStatus", () => {
     // then
     expect(footer).not.toContain("\n")
     for (const columns of [72, 120]) expect(rendererVisibleWidth(footer)).toBeLessThanOrEqual(columns)
-    expect(footer).toBe("t1/r1 st...|category:ultrabrain omo-mock/mock-1 xhigh in-process running")
+    expect(footer).toBe("t1/r1 ac...|category:ultrabrain omo-mock/mock-1 xhigh in-process running")
   })
 })
 

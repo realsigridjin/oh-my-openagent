@@ -66,6 +66,13 @@ describe("formatStatusTarget", () => {
     ).toBe("quick (openai/gpt-5.6-sol:xhigh)")
   })
 
+  test("#given a category but only a raw model #when formatted #then the sanitized raw model qualifies the target", () => {
+    // given / when / then
+    expect(formatStatusTarget({ category: "quick", model: "anthropic/claude-sonnet-4-5" })).toBe("quick (anthropic/claude-sonnet-4-5)")
+    expect(formatStatusTarget({ model: "anthropic/claude-sonnet-4-5" })).toBe("anthropic/claude-sonnet-4-5")
+    expect(formatStatusTarget({ category: "quick", model: "raw\u001b[31m-model" })).toBe("quick (raw-model)")
+  })
+
   test("#given no target facts #when formatted #then nothing is emitted", () => {
     // given / when / then
     expect(formatStatusTarget({})).toBeUndefined()

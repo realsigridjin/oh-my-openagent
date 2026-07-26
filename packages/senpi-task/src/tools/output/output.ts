@@ -101,9 +101,11 @@ async function blockedResult(
   const emit = (): void => {
     const activity = composeStatusLine({
       identity: taskIdentityLabel({ taskId: record.task_id, name: record.name, description: record.description }),
-      target: formatStatusTarget({ category: record.category, agentType: record.agent_type, resolvedModel: record.resolved_model }),
+      target: formatStatusTarget({ category: record.category, agentType: record.agent_type, resolvedModel: record.resolved_model, model: record.model }),
       stats: deps.manager.runStatsSnapshot?.(record.task_id),
-      verb: record.status === "pending" ? "queued" : currentTool === undefined ? "running" : `running ${currentTool}`,
+      verb: (deps.manager.get(record.task_id)?.status ?? record.status) === "pending"
+        ? "queued"
+        : currentTool === undefined ? "running" : `running ${currentTool}`,
     })
     onUpdate?.(
       toolResult(lastAssistant === undefined ? "" : `↳ last: ${lastAssistant}`, {
@@ -121,9 +123,9 @@ async function blockedResult(
     } else if (event.type === "tool_execution_end") {
       currentTool = undefined
     } else if (event.type === "message_end") {
+      // A textless turn still advances turns/tok-s, so the line refreshes even without a last row.
       const line = assistantLastLine(event.message)
-      if (line === undefined) return
-      lastAssistant = line
+      if (line !== undefined) lastAssistant = line
     } else return
     emit()
   })

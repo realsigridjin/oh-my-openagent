@@ -150,6 +150,7 @@ async function runSpawn(
       ...(params.category !== undefined && { category: params.category }),
       ...(params.subagent_type !== undefined && { agentType: params.subagent_type }),
       ...(started.resolved_model !== undefined && { resolvedModel: started.resolved_model }),
+      ...(params.model !== undefined && { model: params.model }),
       name: started.name,
       ...(params.description !== undefined && { description: params.description }),
     },

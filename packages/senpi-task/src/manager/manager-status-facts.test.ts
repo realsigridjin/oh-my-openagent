@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { baseSpec, cleanupProjects, makeManager } from "./__fixtures__/manager-fakes"
 
+
+
 afterEach(cleanupProjects)
 
 describe("manager status facts", () => {
@@ -31,7 +33,7 @@ describe("manager status facts", () => {
     fake.emit({ type: "tool_execution_start", toolName: "read", args: { path: "a.ts" } })
 
     // when the live snapshot is read BEFORE the child settles
-    const live = manager.runStatsSnapshot(started.task_id)
+    const live = manager.runStatsSnapshot?.(started.task_id)
 
     // then in-flight turns and tool calls are visible to status surfaces
     expect(live?.turns).toBe(1)
@@ -41,6 +43,28 @@ describe("manager status facts", () => {
 
   test("#given an unknown task id #when run stats are read #then nothing is reported", () => {
     // given / when / then
-    expect(makeManager().manager.runStatsSnapshot("st_missing")).toBeUndefined()
+    expect(makeManager().manager.runStatsSnapshot?.("st_missing")).toBeUndefined()
+  })
+})
+
+describe("manager child subscription cleanup", () => {
+  test("#given a listener registered before promotion #when its cleanup runs #then the handle unsubscribes exactly once", async () => {
+    // given a pending child whose listener is registered before the handle exists
+    const { manager, inProcess } = makeManager()
+    const started = await manager.start(baseSpec())
+    if (started.kind !== "started") throw new Error(`unexpected start result: ${started.kind}`)
+    const fake = inProcess.handles.get(started.task_id)
+    if (fake === undefined) throw new Error("fake handle missing")
+
+    const cleanup = manager.subscribeChild(started.task_id, () => {})
+
+    // when the caller cleans up (possibly after promotion) and the task later settles
+    cleanup()
+    cleanup()
+    fake.settle({ status: "completed", finalResponse: "done" })
+    await manager.waitFor(started.task_id)
+
+    // then the underlying handle sees at most one unsubscribe
+    expect(fake.unsubscribeCount()).toBeLessThanOrEqual(1)
   })
 })

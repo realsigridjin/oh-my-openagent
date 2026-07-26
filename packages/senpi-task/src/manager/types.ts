@@ -186,7 +186,8 @@ export type TaskManager = {
   waitFor(taskId: string, options?: { readonly signal?: AbortSignal }): Promise<TaskRecord>
   // Live read of the manager-owned run-stats accumulator. Status surfaces (task_output's blocking
   // wait) need in-flight turns/tool-calls/tok-s; the record only carries run_stats once terminal.
-  runStatsSnapshot(taskId: string): TaskRunStats | undefined
+  // Optional so downstream structural fakes keep compiling; the concrete manager always implements it.
+  runStatsSnapshot?(taskId: string): TaskRunStats | undefined
   // W1-V F3: prune a live handle (and its per-epoch release/background bookkeeping) so the lifecycle
   // destruction port and eviction path never leave a stale handle behind or grow #live unbounded.
   forget(taskId: string): void

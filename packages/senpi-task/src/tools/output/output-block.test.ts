@@ -12,6 +12,7 @@ const WAIT_CONFIG = { min_ms: 1, default_ms: 50, max_ms: 100 } as const
 type MutableOutputManager = Omit<OutputManager, "waitFor"> & {
   readonly waitFor: (taskId: string, options?: { readonly signal?: AbortSignal }) => Promise<TaskRecord>
   readonly waitForCalls: () => readonly string[]
+  readonly replace?: (record: TaskRecord) => void
 }
 
 function managerFrom(input: {
@@ -41,6 +42,9 @@ function managerFrom(input: {
       return current
     },
     waitForCalls: () => waitForCalls,
+    replace: (record) => {
+      records = records.map((existing) => (existing.task_id === record.task_id ? record : existing))
+    },
     ...(input.runStatsSnapshot === undefined ? {} : { runStatsSnapshot: input.runStatsSnapshot }),
     ...(input.subscribeChild === undefined ? {} : { subscribeChild: input.subscribeChild }),
   }
@@ -133,7 +137,7 @@ describe("runTaskOutput block", () => {
     expect(updates).toHaveLength(2)
     const refreshed = updates.at(-1)?.details
     if (refreshed?.kind !== "waiting") throw new Error("expected waiting details")
-    expect(refreshed.progress.activity).toBe("Audit the waiting line · quick · turn 2 (3 tools) · running read src/foo.ts · 42 tok/s")
+    expect(refreshed.progress.activity).toBe("Audit the waiting line · quick (claude-sonnet-4-5) · turn 2 (3 tools) · running read src/foo.ts · 42 tok/s")
     expect(refreshed.currentTool).toBe("read src/foo.ts")
 
     listener?.({
@@ -148,6 +152,80 @@ describe("runTaskOutput block", () => {
     resolveWait(makeRecord({ task_id: "st_live", status: "completed", final_response: "done" }))
     await pending
     expect(unsubscribed).toBe(true)
+  })
+
+  test("#given a wait that starts on a pending child #when the child is promoted and emits #then the verb flips from queued to running", async () => {
+    const pendingRecord = makeRecord({ task_id: "st_promo", status: "pending", description: "Audit the waiting line" })
+    let resolveWait: (record: TaskRecord) => void = () => {}
+    let listener: ((event: never) => void) | undefined
+    let current = pendingRecord
+    const manager = managerFrom({
+      records: [pendingRecord],
+      waitFor: () => new Promise<TaskRecord>((resolve) => { resolveWait = resolve }),
+      subscribeChild: (_taskId, next) => {
+        listener = next
+        return () => {}
+      },
+    })
+    const updates: Parameters<AgentToolUpdateCallback>[0][] = []
+    const pending = runTaskOutput(
+      depsFrom({ manager }),
+      { task_id: "st_promo", timeout_ms: 999 },
+      "session-parent",
+      undefined,
+      (update) => { updates.push(update) },
+    )
+
+    const first = updates.at(-1)?.details
+    if (first?.kind !== "waiting") throw new Error("expected waiting details")
+    expect(first.progress.activity).toContain("queued")
+
+    // when the record flips to running (promotion) and the child starts a tool
+    current = makeRecord({ task_id: "st_promo", status: "running", description: "Audit the waiting line" })
+    manager.replace?.(current)
+    listener?.({ type: "tool_execution_start", toolName: "read", args: { path: "a.ts" } } as never)
+
+    const refreshed = updates.at(-1)?.details
+    if (refreshed?.kind !== "waiting") throw new Error("expected waiting details")
+    expect(refreshed.progress.activity).toContain("running read a.ts")
+    expect(refreshed.progress.activity).not.toContain("queued")
+
+    resolveWait(makeRecord({ task_id: "st_promo", status: "completed", final_response: "done" }))
+    await pending
+  })
+
+  test("#given a live child #when an assistant turn carries no text #then the line still refreshes its stats", async () => {
+    const running = makeRecord({ task_id: "st_silent", status: "running", description: "Audit the waiting line" })
+    let resolveWait: (record: TaskRecord) => void = () => {}
+    let listener: ((event: never) => void) | undefined
+    const manager = managerFrom({
+      records: [running],
+      waitFor: () => new Promise<TaskRecord>((resolve) => { resolveWait = resolve }),
+      runStatsSnapshot: () => ({ runtime_ms: 1_000, turns: 5, tool_calls: 0 }),
+      subscribeChild: (_taskId, next) => {
+        listener = next
+        return () => {}
+      },
+    })
+    const updates: Parameters<AgentToolUpdateCallback>[0][] = []
+    const pending = runTaskOutput(
+      depsFrom({ manager }),
+      { task_id: "st_silent", timeout_ms: 999 },
+      "session-parent",
+      undefined,
+      (update) => { updates.push(update) },
+    )
+
+    expect(updates).toHaveLength(1)
+    listener?.({ type: "message_end", message: { role: "assistant", content: [] } } as never)
+    expect(updates).toHaveLength(2)
+    const refreshed = updates.at(-1)?.details
+    if (refreshed?.kind !== "waiting") throw new Error("expected waiting details")
+    expect(refreshed.progress.activity).toContain("turn 5")
+    expect(updates.at(-1)?.content).toEqual([{ type: "text", text: "" }])
+
+    resolveWait(makeRecord({ task_id: "st_silent", status: "completed", final_response: "done" }))
+    await pending
   })
 
   test("#given omitted block on a running child #when waitFor resolves #then the terminal transcript is returned", async () => {
