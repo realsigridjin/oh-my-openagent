@@ -53,6 +53,20 @@ describe("child task progress", () => {
     expect(progress.contentText()).toBe("↳ last: Final assistant update")
   })
 
+  test("#given a human description #when progress is composed #then the activity leads with what the task is, not its id", () => {
+    // given
+    const progress = createChildProgress(
+      "st_00000009",
+      { category: "quick", description: "Audit the waiting line", name: "task-1", resolvedModel: RESOLVED_MODEL },
+      1_000,
+      () => 2_000,
+    )
+
+    // then the id survives only as the correlation handle inside details, not as the lead token
+    expect(progress.details().progress.activity).toBe("Audit the waiting line · quick (apitopia/kimi-k3-unlocked:max) · turn 0 · running")
+    expect(progress.details().childId).toBe("st_00000009")
+  })
+
   test("#given a running tool #when composed #then the activity names the tool and pluralizes tool counts", () => {
     // given
     const progress = createChildProgress("st_00000002", { agentType: "oracle" }, 1_000, () => 2_000)

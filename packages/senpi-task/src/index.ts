@@ -30,6 +30,13 @@ export type {
   TaskRecordDiagnostic,
   TaskRecordStore,
 } from "./store"
+export {
+  composeStatusLine,
+  formatStatusTarget,
+  taskIdentityLabel,
+} from "./status-line"
+export { assistantLastLine, formatToolActivity } from "./progress"
+export type { StatusLineInput, StatusLineStats, StatusTargetInput, TaskIdentityInput } from "./status-line"
 export { createMinimalSenpiResourceLoader } from "./senpi/minimal-resource-loader"
 export type { MinimalSenpiResourceLoaderOptions } from "./senpi/minimal-resource-loader"
 export {
